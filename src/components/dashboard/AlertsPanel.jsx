@@ -3,18 +3,22 @@ function AlertsPanel({ alerts }) {
 
   return (
     <div style={styles.panel}>
-      <h3 style={styles.heading}>Alerts</h3>
+      <h3 style={styles.title}>Alerts</h3>
 
-      {hasAlerts ? (
-        <ul style={styles.list}>
-          {alerts.map((alert, index) => (
-            <li key={index} style={styles.alertItem}>
-              {alert}
-            </li>
-          ))}
-        </ul>
+      {!hasAlerts ? (
+        <p style={styles.goodStatus}>Conditions are optimal</p>
       ) : (
-        <p style={styles.normal}>No active alerts</p>
+        <div>
+          <p style={styles.badStatus}>Conditions are not optimal</p>
+
+          <ul style={styles.alertList}>
+            {alerts.map((alert, index) => (
+              <li key={index} style={styles.alertItem}>
+                {alert}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   );
@@ -22,26 +26,30 @@ function AlertsPanel({ alerts }) {
 
 const styles = {
   panel: {
-    border: "1px solid #ddd",
-    borderRadius: "16px",
-    padding: "16px",
     background: "#fff",
+    padding: "16px",
+    borderRadius: "16px",
+    border: "1px solid #ddd",
     boxShadow: "0 2px 8px rgba(0,0,0,0.05)"
   },
-  heading: {
+  title: {
     marginTop: 0
   },
-  list: {
-    paddingLeft: "20px",
-    marginBottom: 0
+  goodStatus: {
+    color: "#2e7d32",
+    fontWeight: "700"
+  },
+  badStatus: {
+    color: "#c62828",
+    fontWeight: "700",
+    marginBottom: "8px"
+  },
+  alertList: {
+    margin: 0,
+    paddingLeft: "20px"
   },
   alertItem: {
-    color: "#b00020",
-    fontWeight: "600"
-  },
-  normal: {
-    color: "#1b5e20",
-    fontWeight: "600"
+    marginBottom: "6px"
   }
 };
 

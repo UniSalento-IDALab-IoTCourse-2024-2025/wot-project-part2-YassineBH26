@@ -82,11 +82,13 @@ export async function startDelivery(deliveryId) {
     })
   });
 
+  const data = await response.json();
+
   if (!response.ok) {
-    throw new Error("Failed to start delivery");
+    throw new Error(data.error || "Failed to start delivery");
   }
 
-  return response.json();
+  return data;
 }
 
 export async function stopDelivery(deliveryId) {
@@ -102,6 +104,22 @@ export async function stopDelivery(deliveryId) {
 
   if (!response.ok) {
     throw new Error("Failed to stop delivery");
+  }
+
+  return response.json();
+}
+
+export async function createRequest(requestData) {
+  const response = await fetch(`${BASE_URL}/create-request`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(requestData)
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to create delivery request");
   }
 
   return response.json();

@@ -5,10 +5,9 @@ function Navbar() {
     <nav style={styles.nav}>
       <h2 style={styles.title}>IoT Food Delivery Dashboard</h2>
       <div style={styles.links}>
-        <Link to="/" style={styles.link}>Dashboard</Link>
         <Link to="/driver" style={styles.link}>Driver</Link>
         <Link to="/admin/requests" style={styles.link}>Admin Requests</Link>
-        <Link to="/history" style={styles.link}>History</Link>
+        <Link to="/school"style={styles.link}>School</Link>
       </div>
     </nav>
   );

@@ -1,21 +1,19 @@
 import { Routes, Route } from "react-router-dom";
 import Navbar from "./components/layout/Navbar";
-import Dashboard from "./pages/Dashboard";
 import Driver from "./pages/Driver";
-import History from "./pages/History";
 import AdminRequests from "./pages/AdminRequests";
 import NotFound from "./pages/NotFound";
+import School from "./pages/School";
 
 function App() {
   return (
     <>
       <Navbar />
       <Routes>
-        <Route path="/" element={<Dashboard />} />
         <Route path="/driver" element={<Driver />} />
-        <Route path="/history" element={<History />} />
         <Route path="/admin/requests" element={<AdminRequests />} />
         <Route path="*" element={<NotFound />} />
+        <Route path="/school" element={<School />} />
       </Routes>
     </>
   );

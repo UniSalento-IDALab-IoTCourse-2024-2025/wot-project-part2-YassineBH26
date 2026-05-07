@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import {
   fetchLiveData,
   fetchHistory,
@@ -12,9 +12,27 @@ import StatusCard from "../components/dashboard/StatusCard";
 import AlertsPanel from "../components/dashboard/AlertsPanel";
 import HistoryTable from "../components/dashboard/HistoryTable";
 
-function Driver() {
-  const DRIVER_ID = 1;
+const formatCoordinate = (value) => {
+  if (value === null || value === undefined || value === "") {
+    return "-";
+  }
 
+  const numberValue = Number(value);
+
+  if (Number.isNaN(numberValue)) {
+    return "-";
+  }
+
+  return numberValue.toFixed(3);
+};
+
+const DRIVER_ID = 1;
+
+const getClearedDriverDeliveries = () => {
+  return JSON.parse(localStorage.getItem("cleared_driver_deliveries") || "[]");
+};
+
+function Driver() {
   const [liveData, setLiveData] = useState(null);
   const [history, setHistory] = useState([]);
   const [activeDelivery, setActiveDelivery] = useState(null);
@@ -25,14 +43,15 @@ function Driver() {
   const [viewMode, setViewMode] = useState("assigned");
   const previousDataRef = useRef(null);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
-      const [live, historyData, activeDeliveryData, deliveriesData] = await Promise.all([
-        fetchLiveData(),
-        fetchHistory(),
-        fetchActiveDelivery(),
-        fetchDriverDeliveries(DRIVER_ID)
-      ]);
+      const [live, historyData, activeDeliveryData, deliveriesData] =
+        await Promise.all([
+          fetchLiveData(),
+          fetchHistory(),
+          fetchActiveDelivery(),
+          fetchDriverDeliveries(DRIVER_ID)
+        ]);
 
       const newLiveString = JSON.stringify(live);
       const oldLiveString = JSON.stringify(previousDataRef.current);
@@ -40,7 +59,6 @@ function Driver() {
       if (!previousDataRef.current || newLiveString !== oldLiveString) {
         setLiveData(live);
         previousDataRef.current = live;
-      } else {
       }
 
       const activeId = activeDeliveryData.active_delivery_id;
@@ -48,20 +66,25 @@ function Driver() {
         ? historyData.filter((row) => row.delivery_id === activeId)
         : [];
 
+      const clearedDeliveries = getClearedDriverDeliveries();
+      const visibleDeliveries = deliveriesData.filter(
+        (delivery) => !clearedDeliveries.includes(delivery.id)
+      );
+
       setHistory(filteredHistory);
       setActiveDelivery(activeId);
-      setDriverDeliveries(deliveriesData);
+      setDriverDeliveries(visibleDeliveries);
       setError("");
     } catch (err) {
       setError(err.message);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadData();
     const interval = setInterval(loadData, 3000);
     return () => clearInterval(interval);
-  }, []);
+  }, [loadData]);
 
   const handleToggleMonitoring = async () => {
     try {
@@ -97,6 +120,23 @@ function Driver() {
     }
   };
 
+  const handleClear = (deliveryId) => {
+    const clearedDeliveries = getClearedDriverDeliveries();
+
+    if (!clearedDeliveries.includes(deliveryId)) {
+      localStorage.setItem(
+        "cleared_driver_deliveries",
+        JSON.stringify([...clearedDeliveries, deliveryId])
+      );
+    }
+
+    setDriverDeliveries((currentDeliveries) =>
+      currentDeliveries.filter((delivery) => delivery.id !== deliveryId)
+    );
+
+    setActionMessage("Completed delivery cleared from this interface.");
+  };
+
   if (error) {
     return (
       <div style={styles.page}>
@@ -114,7 +154,7 @@ function Driver() {
   }
 
   const assignedDeliveries = driverDeliveries.filter(
-    (delivery) => delivery.status === "pending"
+    (delivery) => delivery.status === "assigned"
   );
 
   const accomplishedDeliveries = driverDeliveries.filter(
@@ -140,7 +180,9 @@ function Driver() {
               disabled={buttonLoading}
               style={{
                 ...styles.button,
-                backgroundColor: liveData.monitoring_active ? "#c62828" : "#2e7d32"
+                backgroundColor: liveData.monitoring_active
+                  ? "#c62828"
+                  : "#2e7d32"
               }}
             >
               {buttonLoading
@@ -189,12 +231,24 @@ function Driver() {
             <div style={styles.assignmentsList}>
               {assignedDeliveries.map((delivery) => (
                 <div key={delivery.id} style={styles.assignmentCard}>
-                  <p><strong>Delivery ID:</strong> {delivery.id}</p>
-                  <p><strong>School ID:</strong> {delivery.school_id}</p>
-                  <p><strong>Food:</strong> {delivery.food_type}</p>
-                  <p><strong>Quantity:</strong> {delivery.quantity}</p>
-                  <p><strong>Status:</strong> {delivery.status}</p>
-                  <p><strong>Notes:</strong> {delivery.notes || "-"}</p>
+                  <p>
+                    <strong>Delivery ID:</strong> {delivery.id}
+                  </p>
+                  <p>
+                    <strong>School ID:</strong> {delivery.school_id}
+                  </p>
+                  <p>
+                    <strong>Food:</strong> {delivery.food_type}
+                  </p>
+                  <p>
+                    <strong>Quantity:</strong> {delivery.quantity}
+                  </p>
+                  <p>
+                    <strong>Status:</strong> {delivery.status}
+                  </p>
+                  <p>
+                    <strong>Notes:</strong> {delivery.notes || "-"}
+                  </p>
                   <button
                     style={styles.startButton}
                     onClick={() => handleStartDelivery(delivery.id)}
@@ -220,14 +274,38 @@ function Driver() {
             <div style={styles.assignmentsList}>
               {accomplishedDeliveries.map((delivery) => (
                 <div key={delivery.id} style={styles.assignmentCard}>
-                  <p><strong>Delivery ID:</strong> {delivery.id}</p>
-                  <p><strong>School ID:</strong> {delivery.school_id}</p>
-                  <p><strong>Food:</strong> {delivery.food_type}</p>
-                  <p><strong>Quantity:</strong> {delivery.quantity}</p>
-                  <p><strong>Status:</strong> {delivery.status}</p>
-                  <p><strong>Start Time:</strong> {delivery.start_time || "-"}</p>
-                  <p><strong>End Time:</strong> {delivery.end_time || "-"}</p>
-                  <p><strong>Notes:</strong> {delivery.notes || "-"}</p>
+                  <p>
+                    <strong>Delivery ID:</strong> {delivery.id}
+                  </p>
+                  <p>
+                    <strong>School ID:</strong> {delivery.school_id}
+                  </p>
+                  <p>
+                    <strong>Food:</strong> {delivery.food_type}
+                  </p>
+                  <p>
+                    <strong>Quantity:</strong> {delivery.quantity}
+                  </p>
+                  <p>
+                    <strong>Status:</strong> {delivery.status}
+                  </p>
+                  <p>
+                    <strong>Start Time:</strong> {delivery.start_time || "-"}
+                  </p>
+                  <p>
+                    <strong>End Time:</strong> {delivery.end_time || "-"}
+                  </p>
+                  <p>
+                    <strong>Notes:</strong> {delivery.notes || "-"}
+                  </p>
+
+                  <button
+                    type="button"
+                    style={styles.clearButton}
+                    onClick={() => handleClear(delivery.id)}
+                  >
+                    Clear
+                  </button>
                 </div>
               ))}
             </div>
@@ -244,14 +322,8 @@ function Driver() {
                 title="Monitoring"
                 value={liveData.monitoring_active ? "Active" : "Stopped"}
               />
-              <StatusCard
-                title="Active Delivery"
-                value={activeDelivery ?? "None"}
-              />
-              <StatusCard
-                title="GPS Time"
-                value={liveData.gps_time ?? "-"}
-              />
+              <StatusCard title="Active Delivery" value={activeDelivery ?? "None"} />
+              <StatusCard title="GPS Time" value={liveData.gps_time ?? "-"} />
               <StatusCard
                 title="Sensor Time"
                 value={liveData.sensor_time ?? "-"}
@@ -260,11 +332,21 @@ function Driver() {
 
             {currentDeliveryDetails && (
               <div style={styles.currentDeliveryCard}>
-                <p><strong>School ID:</strong> {currentDeliveryDetails.school_id}</p>
-                <p><strong>Food:</strong> {currentDeliveryDetails.food_type}</p>
-                <p><strong>Quantity:</strong> {currentDeliveryDetails.quantity}</p>
-                <p><strong>Status:</strong> {currentDeliveryDetails.status}</p>
-                <p><strong>Notes:</strong> {currentDeliveryDetails.notes || "-"}</p>
+                <p>
+                  <strong>School ID:</strong> {currentDeliveryDetails.school_id}
+                </p>
+                <p>
+                  <strong>Food:</strong> {currentDeliveryDetails.food_type}
+                </p>
+                <p>
+                  <strong>Quantity:</strong> {currentDeliveryDetails.quantity}
+                </p>
+                <p>
+                  <strong>Status:</strong> {currentDeliveryDetails.status}
+                </p>
+                <p>
+                  <strong>Notes:</strong> {currentDeliveryDetails.notes || "-"}
+                </p>
               </div>
             )}
 
@@ -289,18 +371,9 @@ function Driver() {
                 title="Humidity"
                 value={`${liveData.humidity ?? "-"} %`}
               />
-              <StatusCard
-                title="Tilt"
-                value={liveData.tilt ? "Tilted" : "Normal"}
-              />
-              <StatusCard
-                title="Latitude"
-                value={liveData.lat ?? "-"}
-              />
-              <StatusCard
-                title="Longitude"
-                value={liveData.lon ?? "-"}
-              />
+              <StatusCard title="Tilt" value={liveData.tilt ? "Tilted" : "Normal"} />
+              <StatusCard title="Latitude" value={formatCoordinate(liveData.lat)}/>
+              <StatusCard title="Longitude" value={formatCoordinate(liveData.lon)} />
             </div>
           </div>
 
@@ -342,7 +415,6 @@ const styles = {
     marginTop: "6px",
     color: "#666"
   },
-
   button: {
     border: "none",
     color: "white",
@@ -387,6 +459,16 @@ const styles = {
     color: "#fff",
     padding: "10px 16px",
     borderRadius: "10px",
+    cursor: "pointer",
+    fontWeight: "600",
+    marginTop: "8px"
+  },
+  clearButton: {
+    border: "none",
+    background: "#c62828",
+    color: "#fff",
+    padding: "8px 14px",
+    borderRadius: "8px",
     cursor: "pointer",
     fontWeight: "600",
     marginTop: "8px"
