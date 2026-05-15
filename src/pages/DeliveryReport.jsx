@@ -23,6 +23,34 @@ function formatMinutesToMinSec(minutes) {
   return `${secs}s`;
 }
 
+function formatDistance(value) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) {
+    return "-";
+  }
+
+  return `${Number(value).toFixed(2)} km`;
+}
+
+function getDistanceDescription(summary) {
+  if (!summary.delivery_distance_km) {
+    return "Distance could not be calculated because GPS data or school coordinates are missing.";
+  }
+
+  if (summary.delivery_distance_type === "driving") {
+    const durationText = summary.estimated_driving_duration_minutes
+      ? ` Approx. ${formatMinutesToMinSec(summary.estimated_driving_duration_minutes)} by road.`
+      : "";
+
+    return `Estimated road distance from driver start position to the school.${durationText}`;
+  }
+
+  if (summary.delivery_distance_type === "straight_line_fallback") {
+    return "Driving route was not available, so straight-line distance was used.";
+  }
+
+  return summary.delivery_distance_note || "Estimated delivery distance.";
+}
+
 function DeliveryReport() {
   const navigate = useNavigate();
   const { deliveryId } = useParams();
@@ -123,19 +151,8 @@ function DeliveryReport() {
 
         <MetricCard
           title="Estimated Driving Distance"
-          value={
-            summary.delivery_distance_km !== null &&
-              summary.delivery_distance_km !== undefined
-              ? `${summary.delivery_distance_km} km`
-              : "Not available"
-          }
-          description={
-            summary.delivery_distance_type === "driving"
-              ? `Estimated road distance from driver start position to the school. Approx. ${formatMinutesToMinSec(summary.estimated_driving_duration_minutes)} by road.`
-              : summary.delivery_distance_type === "straight_line_fallback"
-                ? "Straight-line fallback used because driving route was unavailable."
-                : "GPS data or school coordinates are not available."
-          }
+          value={formatDistance(summary.delivery_distance_km)}
+          description={getDistanceDescription(summary)}
         />
 
         <MetricCard
@@ -179,31 +196,6 @@ function DeliveryReport() {
           value={`${summary.min_humidity ?? "-"}% → ${summary.max_humidity ?? "-"}%`}
           description="Minimum and maximum humidity recorded."
         />
-      </div>
-
-      <div style={styles.section}>
-        <h2 style={styles.sectionTitle}>AI-Relevant Delivery Insights</h2>
-
-        <div style={styles.insightBox}>
-          <p>
-            This report can support intelligent driver assignment. Fragile
-            deliveries can be assigned to drivers with fewer tilt events, while
-            long-distance or sensitive deliveries can be assigned to drivers with
-            better temperature and humidity stability.
-          </p>
-
-          <ul style={styles.insightList}>
-            <li>
-              <strong>Tilt alerts:</strong> {summary.tilt_alerts}
-            </li>
-            <li>
-              <strong>Temperature alerts:</strong> {summary.temperature_alerts}
-            </li>
-            <li>
-              <strong>Humidity alerts:</strong> {summary.humidity_alerts}
-            </li>
-          </ul>
-        </div>
       </div>
 
       <div style={styles.section}>
@@ -418,19 +410,6 @@ const styles = {
   sectionTitle: {
     fontSize: "22px",
     color: "#111827"
-  },
-
-  insightBox: {
-    background: "#ffffff",
-    border: "1px solid #e5e7eb",
-    borderRadius: "16px",
-    padding: "18px",
-    color: "#374151",
-    lineHeight: "1.5"
-  },
-
-  insightList: {
-    marginBottom: 0
   },
 
   tableBox: {
