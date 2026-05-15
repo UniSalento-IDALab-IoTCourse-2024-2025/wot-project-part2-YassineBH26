@@ -1,16 +1,17 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   createRequest,
-  fetchRequests,
+  fetchSchoolRequests,
   fetchLiveData,
   fetchHistory,
   fetchActiveDelivery
 } from "../services/api";
-import { foods } from "../data/foods";
+import { foods, getFoodEmoji } from "../data/foods";
 
 import StatusCard from "../components/dashboard/StatusCard";
 import AlertsPanel from "../components/dashboard/AlertsPanel";
 import HistoryTable from "../components/dashboard/HistoryTable";
+import FoodItems from "../components/FoodItems";
 
 const formatCoordinate = (value) => {
   if (value === null || value === undefined || value === "") {
@@ -25,8 +26,6 @@ const formatCoordinate = (value) => {
 
   return numberValue.toFixed(3);
 };
-
-const SCHOOL_ID = 1;
 
 const getClearedSchoolRequests = () => {
   return JSON.parse(localStorage.getItem("cleared_school_requests") || "[]");
@@ -48,14 +47,10 @@ function School() {
   const [activeSchoolRequest, setActiveSchoolRequest] = useState(null);
 
   const loadMyRequests = useCallback(async () => {
-    const data = await fetchRequests();
+    const data = await fetchSchoolRequests();
     const clearedRequests = getClearedSchoolRequests();
 
-    const filtered = data.filter(
-      (req) =>
-        req.school_id === SCHOOL_ID &&
-        !clearedRequests.includes(req.id)
-    );
+    const filtered = data.filter((req) => !clearedRequests.includes(req.id));
 
     setMyRequests(filtered);
 
@@ -123,22 +118,6 @@ function School() {
     );
   };
 
-  const getStatusStyle = (status) => {
-    if (status === "completed") {
-      return { background: "#d4edda", color: "#155724" };
-    }
-
-    if (status === "assigned") {
-      return { background: "#cce5ff", color: "#004085" };
-    }
-
-    if (status === "in_progress") {
-      return { background: "#fff3cd", color: "#856404" };
-    }
-
-    return { background: "#eee", color: "#333" };
-  };
-
   const handleClear = (requestId) => {
     const clearedRequests = getClearedSchoolRequests();
 
@@ -182,7 +161,6 @@ function School() {
         .join(", ");
 
       await createRequest({
-        school_id: SCHOOL_ID,
         food_type: foodDescription,
         quantity: selectedFoods.length,
         requested_delivery_time: requestedTime.replace("T", " ") + ":00",
@@ -194,6 +172,7 @@ function School() {
       setFoodSearch("");
       setRequestedTime("");
       setNotes("");
+      setViewMode("requests");
       await loadMyRequests();
     } catch (error) {
       setMessage(`Error: ${error.message}`);
@@ -202,16 +181,46 @@ function School() {
     }
   };
 
+  const requestedCount = myRequests.filter(
+    (req) => req.status === "requested"
+  ).length;
+
+  const assignedCount = myRequests.filter(
+    (req) => req.status === "assigned"
+  ).length;
+
+  const inProgressCount = myRequests.filter(
+    (req) => req.status === "in_progress"
+  ).length;
+
+  const completedCount = myRequests.filter(
+    (req) => req.status === "completed"
+  ).length;
+
   const canSchoolMonitor = Boolean(
     activeDelivery && liveData && activeSchoolRequest
   );
 
   return (
     <div style={styles.page}>
-      <h1>School Panel</h1>
-      <p style={styles.subtitle}>Create, track, and monitor food delivery requests</p>
+      <div style={styles.headerRow}>
+        <div>
+          <h1 style={styles.pageTitle}>School Panel</h1>
+          <p style={styles.subtitle}>
+            Create, track, and monitor food delivery requests.
+          </p>
+        </div>
+      </div>
 
       {message && <p style={styles.message}>{message}</p>}
+
+      <div style={styles.statsGrid}>
+        <SummaryCard label="Total Requests" value={myRequests.length} />
+        <SummaryCard label="Requested" value={requestedCount} />
+        <SummaryCard label="Assigned" value={assignedCount} />
+        <SummaryCard label="In Progress" value={inProgressCount} />
+        <SummaryCard label="Completed" value={completedCount} />
+      </div>
 
       <div style={styles.switchRow}>
         <button
@@ -249,141 +258,188 @@ function School() {
       </div>
 
       {viewMode === "create" && (
-        <form onSubmit={handleSubmit} style={styles.form}>
-          <label style={styles.label}>Food Type</label>
-
-          <input
-            style={styles.input}
-            value={foodSearch}
-            onChange={(e) => setFoodSearch(e.target.value)}
-            placeholder="Search food..."
-          />
-
-          {foodSearch && suggestions.length > 0 && (
-            <div style={styles.suggestions}>
-              {suggestions.map((food) => (
-                <button
-                  key={food}
-                  type="button"
-                  style={styles.suggestionItem}
-                  onClick={() => addFood(food)}
-                >
-                  + {food}
-                </button>
-              ))}
+        <div style={styles.createLayoutSingle}>
+          <form onSubmit={handleSubmit} style={styles.form}>
+            <div style={styles.cardHeader}>
+              <div>
+                <h2 style={styles.cardTitle}>Create Delivery Request</h2>
+                <p style={styles.cardSubtitle}>
+                  Select food items, quantities, and the requested delivery time.
+                </p>
+              </div>
             </div>
-          )}
 
-          <div style={styles.selectedBox}>
-            {selectedFoods.length === 0 ? (
-              <p style={styles.emptyText}>No food selected yet.</p>
-            ) : (
-              selectedFoods.map((item) => (
-                <div key={item.name} style={styles.foodCard}>
-                  <div style={styles.foodHeader}>
-                    <strong>{item.name}</strong>
-                    <button
-                      type="button"
-                      style={styles.removeButton}
-                      onClick={() => removeFood(item.name)}
-                    >
-                      ×
-                    </button>
-                  </div>
+            <label style={styles.label}>Food Items</label>
 
-                  <div style={styles.foodControls}>
-                    <input
-                      style={styles.quantityInput}
-                      type="number"
-                      min="1"
-                      value={item.quantity}
-                      onChange={(e) =>
-                        updateFood(item.name, "quantity", e.target.value)
-                      }
-                      placeholder="Quantity"
-                      required
-                    />
+            <input
+              style={styles.input}
+              value={foodSearch}
+              onChange={(e) => setFoodSearch(e.target.value)}
+              placeholder="Search food..."
+            />
 
-                    <select
-                      style={styles.unitSelect}
-                      value={item.unit}
-                      onChange={(e) =>
-                        updateFood(item.name, "unit", e.target.value)
-                      }
-                    >
-                      <option value="portions">portions</option>
-                      <option value="kg">kg</option>
-                      <option value="g">g</option>
-                      <option value="liters">liters</option>
-                      <option value="units">units</option>
-                      <option value="boxes">boxes</option>
-                    </select>
-                  </div>
-                </div>
-              ))
+            {foodSearch && suggestions.length > 0 && (
+              <div style={styles.suggestions}>
+                {suggestions.map((food) => (
+                  <button
+                    key={food}
+                    type="button"
+                    style={styles.suggestionItem}
+                    onClick={() => addFood(food)}
+                  >
+                    <span style={styles.suggestionLeft}>
+                      <span style={styles.foodEmoji}>{getFoodEmoji(food)}</span>
+                      <strong>{food}</strong>
+                    </span>
+
+                    <span style={styles.addBadge}>Add</span>
+                  </button>
+                ))}
+              </div>
             )}
-          </div>
 
-          <label style={styles.label}>Requested Delivery Time</label>
-          <input
-            style={styles.input}
-            type="datetime-local"
-            value={requestedTime}
-            onChange={(e) => setRequestedTime(e.target.value)}
-            required
-          />
+            <div style={styles.selectedBox}>
+              {selectedFoods.length === 0 ? (
+                <div style={styles.emptyMiniState}>
+                  <div style={styles.emptyIcon}>＋</div>
+                  <strong>No food selected yet</strong>
+                  <span>Search above and add at least one food item.</span>
+                </div>
+              ) : (
+                selectedFoods.map((item) => (
+                  <div key={item.name} style={styles.foodCard}>
+                    <div style={styles.foodHeader}>
+                      <strong style={styles.selectedFoodName}>
+                        <span style={styles.foodEmoji}>
+                          {getFoodEmoji(item.name)}
+                        </span>
+                        {item.name}
+                      </strong>
 
-          <label style={styles.label}>Special Notes</label>
-          <textarea
-            style={styles.textarea}
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Example: No cheese, handle carefully..."
-          />
+                      <button
+                        type="button"
+                        style={styles.removeButton}
+                        onClick={() => removeFood(item.name)}
+                      >
+                        ×
+                      </button>
+                    </div>
 
-          <button style={styles.button} disabled={loading}>
-            {loading ? "Creating..." : "Create Request"}
-          </button>
-        </form>
+                    <div style={styles.foodControls}>
+                      <input
+                        style={styles.quantityInput}
+                        type="number"
+                        min="1"
+                        value={item.quantity}
+                        onChange={(e) =>
+                          updateFood(item.name, "quantity", e.target.value)
+                        }
+                        placeholder="Quantity"
+                        required
+                      />
+
+                      <select
+                        style={styles.unitSelect}
+                        value={item.unit}
+                        onChange={(e) =>
+                          updateFood(item.name, "unit", e.target.value)
+                        }
+                      >
+                        <option value="portions">portions</option>
+                        <option value="kg">kg</option>
+                        <option value="g">g</option>
+                        <option value="liters">liters</option>
+                        <option value="units">units</option>
+                        <option value="boxes">boxes</option>
+                      </select>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <label style={styles.label}>Requested Delivery Time</label>
+            <input
+              style={styles.input}
+              type="datetime-local"
+              value={requestedTime}
+              onChange={(e) => setRequestedTime(e.target.value)}
+              required
+            />
+
+            <label style={styles.label}>Special Notes</label>
+            <textarea
+              style={styles.textarea}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Example: No cheese, handle carefully..."
+            />
+
+            <button style={styles.button} disabled={loading}>
+              {loading ? "Creating..." : "Create Request"}
+            </button>
+          </form>
+        </div>
       )}
 
       {viewMode === "requests" && (
-        <div style={styles.requestsBox}>
-          <h2 style={styles.requestsTitle}>My Delivery Requests</h2>
+        <div style={styles.sectionBox}>
+          <div style={styles.sectionHeader}>
+            <div>
+              <h2 style={styles.requestsTitle}>My Delivery Requests</h2>
+              <p style={styles.sectionSubtitle}>
+                Track all requests created by this school.
+              </p>
+            </div>
+          </div>
 
           {myRequests.length === 0 ? (
-            <p>No requests created yet.</p>
+            <EmptyState
+              title="No requests created yet"
+              text="Create your first delivery request from the Create Request tab."
+            />
           ) : (
             <div style={styles.requestsGrid}>
               {myRequests.map((req) => (
                 <div key={req.id} style={styles.requestCard}>
-                  <p>
-                    <strong>Request ID:</strong> {req.id}
-                  </p>
-                  <p>
-                    <strong>Food:</strong> {req.food_type}
-                  </p>
-                  <p>
-                    <strong>Quantity:</strong> {req.quantity}
-                  </p>
-                  <p>
-                    <strong>Requested Time:</strong>{" "}
-                    {req.requested_delivery_time}
-                  </p>
-                  <p>
-                    <strong>Status:</strong>{" "}
+                  <div style={styles.requestCardTop}>
+                    <div>
+                      <span style={styles.smallLabel}>Request</span>
+                      <strong style={styles.requestId}>#{req.id}</strong>
+                    </div>
+
                     <span
                       style={{
                         ...styles.statusBadge,
                         ...getStatusStyle(req.status)
                       }}
                     >
-                      {req.status}
+                      {formatStatus(req.status)}
                     </span>
-                  </p>
-                  <p>
-                    <strong>Notes:</strong> {req.special_notes || "-"}
-                  </p>
+                  </div>
+
+                  <div style={styles.requestBlock}>
+                    <span style={styles.smallLabel}>Food items</span>
+                    <div style={styles.foodItemsSpacing}>
+                      <FoodItems foodText={req.food_type} />
+                    </div>
+                  </div>
+
+                  <div style={styles.requestMetaGrid}>
+                    <div>
+                      <span style={styles.smallLabel}>Requested time</span>
+                      <strong style={styles.metaValue}>
+                        {req.requested_delivery_time}
+                      </strong>
+                    </div>
+
+                    <div>
+                      <span style={styles.smallLabel}>Notes</span>
+                      <strong style={styles.metaValue}>
+                        {req.special_notes || "-"}
+                      </strong>
+                    </div>
+                  </div>
 
                   {req.status === "completed" && (
                     <button
@@ -402,11 +458,21 @@ function School() {
       )}
 
       {viewMode === "monitoring" && (
-        <div style={styles.monitoringBox}>
-          <h2 style={styles.requestsTitle}>Active Delivery Monitoring</h2>
+        <div style={styles.sectionBox}>
+          <div style={styles.sectionHeader}>
+            <div>
+              <h2 style={styles.requestsTitle}>Active Delivery Monitoring</h2>
+              <p style={styles.sectionSubtitle}>
+                Follow the active delivery conditions in real time.
+              </p>
+            </div>
+          </div>
 
           {!canSchoolMonitor ? (
-            <p>No active delivery is currently in progress for this school.</p>
+            <EmptyState
+              title="No active delivery"
+              text="There is no delivery currently in progress for this school."
+            />
           ) : (
             <>
               <div style={styles.grid}>
@@ -423,29 +489,39 @@ function School() {
               </div>
 
               <div style={styles.activeRequestCard}>
-                <p>
-                  <strong>Request ID:</strong> {activeSchoolRequest.id}
-                </p>
-                <p>
-                  <strong>Food:</strong> {activeSchoolRequest.food_type}
-                </p>
-                <p>
-                  <strong>Quantity:</strong> {activeSchoolRequest.quantity}
-                </p>
-                <p>
-                  <strong>Status:</strong>{" "}
+                <div style={styles.activeRequestHeader}>
+                  <div>
+                    <span style={styles.smallLabel}>Active request</span>
+                    <strong style={styles.requestId}>
+                      #{activeSchoolRequest.id}
+                    </strong>
+                  </div>
+
                   <span
                     style={{
                       ...styles.statusBadge,
                       ...getStatusStyle(activeSchoolRequest.status)
                     }}
                   >
-                    {activeSchoolRequest.status}
+                    {formatStatus(activeSchoolRequest.status)}
                   </span>
-                </p>
-                <p>
-                  <strong>Notes:</strong> {activeSchoolRequest.special_notes || "-"}
-                </p>
+                </div>
+
+                <div style={styles.requestBlock}>
+                  <span style={styles.smallLabel}>Food items</span>
+                  <div style={styles.foodItemsSpacing}>
+                    <FoodItems foodText={activeSchoolRequest.food_type} />
+                  </div>
+                </div>
+
+                <div style={styles.requestMetaGrid}>
+                  <div>
+                    <span style={styles.smallLabel}>Notes</span>
+                    <strong style={styles.metaValue}>
+                      {activeSchoolRequest.special_notes || "-"}
+                    </strong>
+                  </div>
+                </div>
               </div>
 
               <h3 style={styles.subSectionTitle}>Live Conditions</h3>
@@ -463,8 +539,14 @@ function School() {
                   title="Tilt"
                   value={liveData.tilt ? "Tilted" : "Normal"}
                 />
-                <StatusCard title="Latitude" value={formatCoordinate(liveData.lat)}/>
-                <StatusCard title="Longitude" value={formatCoordinate(liveData.lon)} />
+                <StatusCard
+                  title="Latitude"
+                  value={formatCoordinate(liveData.lat)}
+                />
+                <StatusCard
+                  title="Longitude"
+                  value={formatCoordinate(liveData.lon)}
+                />
               </div>
 
               <div style={styles.sectionSpacing}>
@@ -482,207 +564,528 @@ function School() {
   );
 }
 
+function SummaryCard({ label, value }) {
+  return (
+    <div style={styles.summaryCard} className="admin-stat-card">
+      <span style={styles.summaryLabel}>{label}</span>
+      <strong style={styles.summaryValue}>{value}</strong>
+    </div>
+  );
+}
+
+function EmptyState({ title, text }) {
+  return (
+    <div style={styles.emptyState}>
+      <div style={styles.emptyIconLarge}>✓</div>
+      <strong style={styles.emptyTitle}>{title}</strong>
+      <span style={styles.emptyText}>{text}</span>
+    </div>
+  );
+}
+
+function formatStatus(status) {
+  if (status === "in_progress") return "in progress";
+  return status;
+}
+
+function getStatusStyle(status) {
+  if (status === "completed") {
+    return { background: "#dcfce7", color: "#166534" };
+  }
+
+  if (status === "assigned") {
+    return { background: "#dbeafe", color: "#1e40af" };
+  }
+
+  if (status === "in_progress") {
+    return { background: "#fef3c7", color: "#92400e" };
+  }
+
+  if (status === "requested") {
+    return { background: "#e0f2fe", color: "#075985" };
+  }
+
+  return { background: "#e5e7eb", color: "#374151" };
+}
+
 const styles = {
   page: {
     padding: "24px",
     background: "#f5f7fb",
     minHeight: "100vh"
   },
-  subtitle: {
-    color: "#555",
-    marginBottom: "24px"
+
+  headerRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start"
   },
+
+  pageTitle: {
+    margin: 0,
+    fontSize: "32px",
+    color: "#111827",
+    lineHeight: 1.1
+  },
+
+  subtitle: {
+    color: "#6b7280",
+    fontSize: "14px",
+    marginTop: "8px",
+    marginBottom: 0
+  },
+
+  message: {
+    background: "#ffffff",
+    padding: "12px 14px",
+    borderRadius: "12px",
+    border: "1px solid #e5e7eb",
+    marginTop: "18px",
+    color: "#374151"
+  },
+
+  statsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(5, 1fr)",
+    gap: "16px",
+    marginTop: "24px"
+  },
+
+  summaryCard: {
+    background: "#ffffff",
+    border: "1px solid #e5e7eb",
+    borderRadius: "16px",
+    padding: "18px",
+    boxShadow: "0 4px 12px rgba(15, 23, 42, 0.04)"
+  },
+
+  summaryLabel: {
+    color: "#6b7280",
+    fontSize: "14px",
+    fontWeight: "700"
+  },
+
+  summaryValue: {
+    display: "block",
+    marginTop: "8px",
+    color: "#062B5F",
+    fontSize: "30px",
+    lineHeight: 1
+  },
+
   switchRow: {
     display: "flex",
-    gap: "12px",
-    marginBottom: "20px",
+    gap: "10px",
+    marginTop: "20px",
+    marginBottom: "18px",
     flexWrap: "wrap"
   },
+
   switchButton: {
-    border: "1px solid #ccc",
-    background: "#fff",
+    border: "1px solid #d1d5db",
+    background: "#ffffff",
+    color: "#374151",
     padding: "10px 16px",
-    borderRadius: "10px",
+    borderRadius: "999px",
     cursor: "pointer",
-    fontWeight: "600"
+    fontWeight: "800"
   },
+
   switchButtonActive: {
-    background: "#1e88e5",
-    color: "#fff",
-    border: "1px solid #1e88e5"
+    background: "#062B5F",
+    color: "#ffffff",
+    border: "1px solid #062B5F"
   },
+
+  createLayoutSingle: {
+    maxWidth: "760px"
+  },
+
   form: {
-    background: "#fff",
-    padding: "24px",
-    borderRadius: "16px",
-    border: "1px solid #ddd",
-    maxWidth: "700px",
+    background: "#ffffff",
+    padding: "22px",
+    borderRadius: "18px",
+    border: "1px solid #e5e7eb",
+    boxShadow: "0 4px 12px rgba(15, 23, 42, 0.04)",
     display: "flex",
     flexDirection: "column",
-    gap: "12px"
+    gap: "12px",
+    width: "100%"
   },
+
+  cardHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: "4px"
+  },
+
+  cardTitle: {
+    margin: 0,
+    color: "#111827",
+    fontSize: "22px"
+  },
+
+  cardSubtitle: {
+    color: "#6b7280",
+    fontSize: "14px",
+    marginTop: "6px",
+    marginBottom: 0,
+    lineHeight: 1.4
+  },
+
   label: {
-    fontWeight: "600"
-  },
-  input: {
-    padding: "12px",
-    borderRadius: "10px",
-    border: "1px solid #ccc",
+    color: "#111827",
+    fontWeight: "800",
     fontSize: "14px"
   },
+
+  input: {
+    height: "42px",
+    padding: "0 12px",
+    borderRadius: "10px",
+    border: "1px solid #d1d5db",
+    fontSize: "14px",
+    outline: "none",
+    background: "#ffffff"
+  },
+
   textarea: {
     padding: "12px",
     borderRadius: "10px",
-    border: "1px solid #ccc",
+    border: "1px solid #d1d5db",
     fontSize: "14px",
-    minHeight: "100px"
+    minHeight: "100px",
+    outline: "none",
+    resize: "vertical"
   },
+
   suggestions: {
     display: "flex",
     flexDirection: "column",
-    gap: "6px",
-    border: "1px solid #ddd",
-    borderRadius: "10px",
+    gap: "7px",
+    border: "1px solid #e5e7eb",
+    borderRadius: "14px",
     padding: "8px",
-    background: "#fafafa"
+    background: "#f9fafb"
   },
+
   suggestionItem: {
-    border: "none",
-    background: "#fff",
+    border: "1px solid #e5e7eb",
+    background: "#ffffff",
+    color: "#111827",
     textAlign: "left",
     padding: "10px",
-    borderRadius: "8px",
+    borderRadius: "12px",
     cursor: "pointer",
-    fontWeight: "600"
+    fontWeight: "700",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "10px"
   },
+
+  suggestionLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px"
+  },
+
+  addBadge: {
+    background: "#ecfdf5",
+    color: "#166534",
+    border: "1px solid #bbf7d0",
+    borderRadius: "999px",
+    padding: "3px 8px",
+    fontSize: "12px",
+    fontWeight: "900"
+  },
+
   selectedBox: {
-    minHeight: "70px",
-    border: "1px dashed #bbb",
-    borderRadius: "10px",
+    minHeight: "82px",
+    border: "1px dashed #cbd5e1",
+    borderRadius: "14px",
     padding: "12px",
     display: "flex",
     flexDirection: "column",
-    gap: "10px"
+    gap: "10px",
+    background: "#f8fafc"
   },
-  emptyText: {
-    color: "#777",
-    margin: 0
+
+  emptyMiniState: {
+    minHeight: "58px",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "4px",
+    color: "#6b7280",
+    fontSize: "13px",
+    textAlign: "center"
   },
+
+  emptyIcon: {
+    width: "28px",
+    height: "28px",
+    borderRadius: "50%",
+    background: "#ecfdf5",
+    color: "#16a34a",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontWeight: "900"
+  },
+
   foodCard: {
-    background: "#e3f2fd",
-    border: "1px solid #bbdefb",
-    borderRadius: "12px",
-    padding: "12px"
+    background: "#ffffff",
+    border: "1px solid #e5e7eb",
+    borderRadius: "14px",
+    padding: "12px",
+    boxShadow: "0 2px 8px rgba(15, 23, 42, 0.03)"
   },
+
   foodHeader: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: "10px"
   },
+
+  selectedFoodName: {
+    color: "#111827",
+    display: "flex",
+    alignItems: "center",
+    gap: "6px"
+  },
+
   foodControls: {
     display: "flex",
     gap: "10px"
   },
+
   quantityInput: {
     flex: 1,
-    padding: "10px",
-    borderRadius: "8px",
-    border: "1px solid #ccc"
+    height: "38px",
+    padding: "0 10px",
+    borderRadius: "9px",
+    border: "1px solid #d1d5db",
+    fontSize: "14px"
   },
+
   unitSelect: {
-    width: "140px",
-    padding: "10px",
-    borderRadius: "8px",
-    border: "1px solid #ccc"
+    width: "150px",
+    height: "38px",
+    padding: "0 10px",
+    borderRadius: "9px",
+    border: "1px solid #d1d5db",
+    background: "#ffffff",
+    fontSize: "14px"
   },
+
   removeButton: {
-    border: "none",
-    background: "transparent",
-    color: "#0d47a1",
+    width: "30px",
+    height: "30px",
+    border: "1px solid #fecaca",
+    background: "#fef2f2",
+    color: "#dc2626",
+    borderRadius: "999px",
     fontWeight: "900",
     cursor: "pointer",
-    fontSize: "20px"
+    fontSize: "18px",
+    lineHeight: 1
   },
+
   button: {
-    marginTop: "12px",
-    padding: "12px 16px",
+    marginTop: "8px",
+    height: "44px",
     border: "none",
     borderRadius: "10px",
-    background: "#1e88e5",
-    color: "#fff",
-    fontWeight: "600",
-    cursor: "pointer"
+    background: "#16a34a",
+    color: "#ffffff",
+    fontWeight: "900",
+    cursor: "pointer",
+    fontSize: "14px"
   },
-  clearButton: {
-    marginTop: "10px",
-    background: "#c62828",
-    color: "#fff",
-    border: "none",
-    padding: "8px 14px",
-    borderRadius: "8px",
-    fontWeight: "600",
-    cursor: "pointer"
+
+  sectionBox: {
+    background: "#ffffff",
+    padding: "22px",
+    borderRadius: "18px",
+    border: "1px solid #e5e7eb",
+    boxShadow: "0 4px 12px rgba(15, 23, 42, 0.04)"
   },
-  message: {
-    background: "#fff",
-    padding: "12px",
-    borderRadius: "10px",
-    border: "1px solid #ddd",
-    marginBottom: "16px",
-    maxWidth: "700px"
+
+  sectionHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: "18px"
   },
-  requestsBox: {
-    background: "#fff",
-    padding: "24px",
-    borderRadius: "16px",
-    border: "1px solid #ddd",
-    maxWidth: "100%"
-  },
-  monitoringBox: {
-    background: "#fff",
-    padding: "24px",
-    borderRadius: "16px",
-    border: "1px solid #ddd",
-    maxWidth: "100%"
-  },
+
   requestsTitle: {
-    marginTop: 0
+    margin: 0,
+    color: "#111827",
+    fontSize: "24px"
   },
-  subSectionTitle: {
-    marginTop: "20px",
-    marginBottom: "12px"
+
+  sectionSubtitle: {
+    color: "#6b7280",
+    fontSize: "14px",
+    marginTop: "6px",
+    marginBottom: 0
   },
-  sectionSpacing: {
-    marginTop: "18px"
-  },
+
   requestsGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(4, 1fr)",
+    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
     gap: "16px"
   },
+
+  requestCard: {
+    border: "1px solid #e5e7eb",
+    borderRadius: "16px",
+    padding: "16px",
+    background: "#f9fbff",
+    boxShadow: "0 3px 10px rgba(15, 23, 42, 0.03)"
+  },
+
+  requestCardTop: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "10px",
+    marginBottom: "14px"
+  },
+
+  smallLabel: {
+    display: "block",
+    color: "#6b7280",
+    fontSize: "12px",
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: "0.03em",
+    marginBottom: "4px"
+  },
+
+  requestId: {
+    color: "#062B5F",
+    fontSize: "20px",
+    lineHeight: 1
+  },
+
+  requestBlock: {
+    marginTop: "12px",
+    marginBottom: "12px"
+  },
+
+  foodItemsSpacing: {
+    marginTop: "8px",
+    marginBottom: "8px"
+  },
+
+  requestMetaGrid: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: "10px",
+    marginTop: "12px"
+  },
+
+  metaValue: {
+    color: "#111827",
+    fontSize: "14px",
+    lineHeight: 1.35
+  },
+
+  clearButton: {
+    marginTop: "14px",
+    background: "#fef2f2",
+    color: "#dc2626",
+    border: "1px solid #fecaca",
+    padding: "8px 14px",
+    borderRadius: "9px",
+    fontWeight: "800",
+    cursor: "pointer"
+  },
+
+  statusBadge: {
+    padding: "5px 10px",
+    borderRadius: "999px",
+    fontWeight: "800",
+    fontSize: "13px",
+    whiteSpace: "nowrap"
+  },
+
   grid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
     gap: "16px"
   },
-  requestCard: {
-    border: "1px solid #ddd",
-    borderRadius: "12px",
+
+  activeRequestCard: {
+    marginTop: "18px",
+    border: "1px solid #e5e7eb",
+    borderRadius: "16px",
     padding: "16px",
     background: "#f9fbff"
   },
-  activeRequestCard: {
-    marginTop: "16px",
-    border: "1px solid #ddd",
-    borderRadius: "12px",
-    padding: "14px",
-    background: "#f9fbff"
+
+  activeRequestHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "10px",
+    marginBottom: "12px"
   },
-  statusBadge: {
-    padding: "4px 8px",
-    borderRadius: "999px",
-    fontWeight: "600"
+
+  subSectionTitle: {
+    marginTop: "22px",
+    marginBottom: "12px",
+    color: "#111827"
+  },
+
+  sectionSpacing: {
+    marginTop: "18px"
+  },
+
+  foodEmoji: {
+    marginRight: "6px"
+  },
+
+  emptyState: {
+    padding: "46px",
+    minHeight: "160px",
+    border: "1px dashed #cbd5e1",
+    borderRadius: "16px",
+    background: "#f8fafc",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "8px",
+    textAlign: "center"
+  },
+
+  emptyIconLarge: {
+    width: "44px",
+    height: "44px",
+    borderRadius: "50%",
+    background: "#ecfdf5",
+    color: "#16a34a",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontWeight: "900",
+    fontSize: "20px"
+  },
+
+  emptyTitle: {
+    color: "#111827",
+    fontSize: "16px"
+  },
+
+  emptyText: {
+    color: "#6b7280",
+    fontSize: "14px"
   }
 };
 

@@ -1,126 +1,213 @@
-const BASE_URL = process.env.REACT_APP_API_BASE_URL;
+const BASE_URL = process.env.REACT_APP_API_BASE_URL || "";
 
-export async function fetchLiveData() {
-  const response = await fetch(`${BASE_URL}/data`);
-  if (!response.ok) {
-    throw new Error("Failed to fetch live data");
-  }
-  return response.json();
-}
-
-export async function fetchHistory() {
-  const response = await fetch(`${BASE_URL}/history-v2`);
-  if (!response.ok) {
-    throw new Error("Failed to fetch V2 history");
-  }
-  return response.json();
-}
-
-export async function fetchActiveDelivery() {
-  const response = await fetch(`${BASE_URL}/active-delivery`);
-  if (!response.ok) {
-    throw new Error("Failed to fetch active delivery");
-  }
-  return response.json();
-}
-
-export async function toggleMonitoring() {
-  const response = await fetch(`${BASE_URL}/toggle-monitoring`, {
-    method: "POST"
-  });
-
-  if (!response.ok) {
-    throw new Error("Failed to toggle monitoring");
-  }
-
-  return response.json();
-}
-
-export async function fetchRequests() {
-  const response = await fetch(`${BASE_URL}/requests`);
-  if (!response.ok) {
-    throw new Error("Failed to fetch requests");
-  }
-  return response.json();
-}
-
-export async function assignRequest(requestId, driverId) {
-  const response = await fetch(`${BASE_URL}/assign-request`, {
-    method: "POST",
+async function request(endpoint, options = {}) {
+  const response = await fetch(`${BASE_URL}${endpoint}`, {
+    ...options,
+    credentials: "include",
     headers: {
-      "Content-Type": "application/json"
+      ...(options.headers || {}),
     },
-    body: JSON.stringify({
-      request_id: requestId,
-      driver_id: driverId
-    })
   });
 
-  if (!response.ok) {
-    throw new Error("Failed to assign request");
+  let data = null;
+
+  try {
+    data = await response.json();
+  } catch (error) {
+    data = null;
   }
 
-  return response.json();
-}
-
-export async function fetchDriverDeliveries(driverId) {
-  const response = await fetch(`${BASE_URL}/driver-deliveries/${driverId}`);
   if (!response.ok) {
-    throw new Error("Failed to fetch driver deliveries");
-  }
-  return response.json();
-}
-
-export async function startDelivery(deliveryId) {
-  const response = await fetch(`${BASE_URL}/start-delivery`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      delivery_id: deliveryId
-    })
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.error || "Failed to start delivery");
+    throw new Error(data?.error || data?.message || "Request failed");
   }
 
   return data;
 }
 
-export async function stopDelivery(deliveryId) {
-  const response = await fetch(`${BASE_URL}/stop-delivery`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      delivery_id: deliveryId
-    })
-  });
+/* =========================
+   REPORTS
+========================= */
 
-  if (!response.ok) {
-    throw new Error("Failed to stop delivery");
-  }
-
-  return response.json();
+export async function fetchDeliveryReport(deliveryId) {
+  return request(`/delivery-report/${deliveryId}`);
 }
 
-export async function createRequest(requestData) {
-  const response = await fetch(`${BASE_URL}/create-request`, {
+/* =========================
+   AUTH
+========================= */
+
+export async function login(username, password) {
+  return request("/auth/login", {
     method: "POST",
     headers: {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
     },
-    body: JSON.stringify(requestData)
+    body: JSON.stringify({
+      username,
+      password,
+    }),
   });
+}
 
-  if (!response.ok) {
-    throw new Error("Failed to create delivery request");
-  }
+export async function signup(userData) {
+  return request("/auth/signup", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(userData),
+  });
+}
 
-  return response.json();
+export async function logout() {
+  return request("/auth/logout", {
+    method: "POST",
+  });
+}
+
+export async function fetchCurrentUser() {
+  return request("/auth/me");
+}
+
+export async function checkUsername(username) {
+  return request("/auth/check-username", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ username }),
+  });
+}
+
+/* =========================
+   MONITORING
+========================= */
+
+export async function fetchLiveData() {
+  return request("/data");
+}
+
+export async function fetchHistory() {
+  return request("/history-v2");
+}
+
+export async function fetchActiveDelivery() {
+  return request("/active-delivery");
+}
+
+export async function toggleMonitoring() {
+  return request("/toggle-monitoring", {
+    method: "POST",
+  });
+}
+
+export async function startMonitoring() {
+  return request("/start-monitoring", {
+    method: "POST",
+  });
+}
+
+export async function stopMonitoring() {
+  return request("/stop-monitoring", {
+    method: "POST",
+  });
+}
+
+/* =========================
+   ADMIN
+========================= */
+
+export async function fetchRequests() {
+  return request("/requests");
+}
+
+export async function fetchDrivers() {
+  return request("/drivers");
+}
+
+export async function assignRequest(requestId, driverId) {
+  return request("/assign-request", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      request_id: requestId,
+      driver_id: driverId,
+    }),
+  });
+}
+
+export async function fetchAdminUsers() {
+  return request("/admin/users");
+}
+
+export async function createAccount(accountData) {
+  return request("/auth/signup", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(accountData),
+  });
+}
+
+export async function geocodeAddress(address) {
+  return request("/admin/geocode-address", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ address }),
+  });
+}
+
+/* =========================
+   DRIVER
+========================= */
+
+export async function fetchDriverDeliveries() {
+  return request("/driver-deliveries");
+}
+
+export async function startDelivery(deliveryId) {
+  return request("/start-delivery", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      delivery_id: deliveryId,
+    }),
+  });
+}
+
+export async function stopDelivery(deliveryId) {
+  return request("/stop-delivery", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      delivery_id: deliveryId,
+    }),
+  });
+}
+
+/* =========================
+   SCHOOL
+========================= */
+
+export async function createRequest(requestData) {
+  return request("/create-request", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(requestData),
+  });
+}
+
+export async function fetchSchoolRequests() {
+  return request("/school-requests");
 }

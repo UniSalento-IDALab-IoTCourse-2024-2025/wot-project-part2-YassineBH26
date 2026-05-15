@@ -41,3 +41,53 @@ export const foods = [
   "Salad",
   "Sandwiches"
 ];
+
+export const foodEmojis = {
+  Pasta: "🍝",
+  Rice: "🍚",
+  Bread: "🍞",
+  Milk: "🥛",
+  Cheese: "🧀",
+  Yogurt: "🥣",
+  Eggs: "🥚",
+  Chicken: "🍗",
+  Fish: "🐟",
+  Beef: "🥩",
+  Turkey: "🍗",
+  Tuna: "🐟",
+  Lentils: "🥣",
+  Beans: "🫘",
+  Chickpeas: "🫘",
+  Soup: "🍲",
+  Tomatoes: "🍅",
+  Carrots: "🥕",
+  Potatoes: "🥔",
+  Onions: "🧅",
+  Lettuce: "🥬",
+  Cucumber: "🥒",
+  Zucchini: "🥒",
+  Spinach: "🥬",
+  Broccoli: "🥦",
+  Peas: "🫛",
+  Apples: "🍎",
+  Bananas: "🍌",
+  Oranges: "🍊",
+  Strawberries: "🍓",
+  Grapes: "🍇",
+  Pears: "🍐",
+  Peaches: "🍑",
+  Watermelon: "🍉",
+  "Orange Juice": "🧃",
+  "Apple Juice": "🧃",
+  Water: "💧",
+  Couscous: "🍛",
+  Pizza: "🍕",
+  Salad: "🥗",
+  Sandwiches: "🥪"
+};
+
+export function getFoodEmoji(foodName) {
+  if (!foodName) return "🍽️";
+
+  return foodEmojis[foodName] || "🍽️";
+}
