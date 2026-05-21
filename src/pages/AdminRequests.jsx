@@ -5,7 +5,8 @@ import {
   fetchRequests,
   fetchDrivers,
   fetchLiveData,
-  fetchHistory
+  fetchHistory,
+  recommendDriver
 } from "../services/api";
 
 import StatusCard from "../components/dashboard/StatusCard";
@@ -43,6 +44,10 @@ function AdminRequests() {
   const [selectedMonitoringRequest, setSelectedMonitoringRequest] = useState(null);
   const [liveData, setLiveData] = useState(null);
   const [history, setHistory] = useState([]);
+
+  const [aiLoadingRequestId, setAiLoadingRequestId] = useState(null);
+  const [aiRecommendations, setAiRecommendations] = useState({});
+  const [openAiDetails, setOpenAiDetails] = useState({});
 
   const loadDrivers = useCallback(async () => {
     const data = await fetchDrivers();
@@ -116,6 +121,47 @@ function AdminRequests() {
     }
   };
 
+  const handleRecommendDriver = async (requestId) => {
+    try {
+      setMessage("");
+      setAiLoadingRequestId(requestId);
+
+      const data = await recommendDriver(requestId);
+
+      setAiRecommendations((current) => ({
+        ...current,
+        [requestId]: data
+      }));
+
+      setOpenAiDetails((current) => ({
+        ...current,
+        [requestId]: true
+      }));
+
+      if (data.recommended_driver_id) {
+        setSelectedDrivers((currentDrivers) => ({
+          ...currentDrivers,
+          [requestId]: String(data.recommended_driver_id)
+        }));
+      }
+
+      setMessage(
+        `AI recommendation ready: ${data.recommended_driver_name} (${data.predicted_risk} risk).`
+      );
+    } catch (error) {
+      setMessage(`AI recommendation error: ${error.message}`);
+    } finally {
+      setAiLoadingRequestId(null);
+    }
+  };
+
+  const toggleAiDetails = (requestId) => {
+    setOpenAiDetails((current) => ({
+      ...current,
+      [requestId]: !current[requestId]
+    }));
+  };
+
   const handleClear = (requestId) => {
     const clearedRequests = getClearedRequests();
 
@@ -176,7 +222,8 @@ function AdminRequests() {
         <div style={styles.monitoringBox}>
           <h1 style={styles.monitoringTitle}>
             Delivery ID {selectedMonitoringRequest.delivery_id} for School{" "}
-            {selectedMonitoringRequest.school_id}
+            {selectedMonitoringRequest.school_name ||
+              `School ${selectedMonitoringRequest.school_id}`}
           </h1>
 
           <p style={styles.subtitle}>
@@ -209,8 +256,9 @@ function AdminRequests() {
                 </p>
 
                 <p>
-                  <strong>School ID:</strong>{" "}
-                  {selectedMonitoringRequest.school_id}
+                  <strong>School:</strong>{" "}
+                  {selectedMonitoringRequest.school_name ||
+                    `School ${selectedMonitoringRequest.school_id}`}
                 </p>
 
                 <div>
@@ -394,98 +442,205 @@ function AdminRequests() {
                 </td>
               </tr>
             ) : (
-              filteredRequests.map((req) => (
-                <tr key={req.id} className="admin-table-row">
-                  <td style={styles.td}>{req.id}</td>
-                  <td style={styles.td}>
-                    <strong>{req.school_name || `School ${req.school_id}`}</strong>
-                  </td>
+              filteredRequests.map((req) => {
+                const aiResult = aiRecommendations[req.id];
+                const isAiOpen = openAiDetails[req.id];
 
-                  <td style={styles.td}>
-                    <FoodItems foodText={req.food_type} />
-                  </td>
+                return (
+                  <tr key={req.id} className="admin-table-row">
+                    <td style={styles.td}>{req.id}</td>
 
-                  <td style={styles.td}>{req.requested_delivery_time}</td>
-                  <td style={styles.td}>{req.special_notes || "-"}</td>
+                    <td style={styles.td}>
+                      <strong>{req.school_name || `School ${req.school_id}`}</strong>
+                    </td>
 
-                  <td style={styles.td}>
-                    <span
-                      style={{
-                        ...styles.statusBadge,
-                        ...getStatusStyle(req.status)
-                      }}
-                    >
-                      {formatStatus(req.status)}
-                    </span>
-                  </td>
+                    <td style={styles.td}>
+                      <FoodItems foodText={req.food_type} />
+                    </td>
 
-                  <td style={styles.td}>
-                    {req.status === "requested" ? (
-                      <select
-                        style={styles.select}
-                        value={selectedDrivers[req.id] || ""}
-                        onChange={(e) =>
-                          handleDriverChange(req.id, e.target.value)
-                        }
+                    <td style={styles.td}>{req.requested_delivery_time}</td>
+                    <td style={styles.td}>{req.special_notes || "-"}</td>
+
+                    <td style={styles.td}>
+                      <span
+                        style={{
+                          ...styles.statusBadge,
+                          ...getStatusStyle(req.status)
+                        }}
                       >
-                        <option value="">Choose driver</option>
-
-                        {drivers.map((driver) => (
-                          <option key={driver.id} value={driver.id}>
-                            {driver.full_name}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <span style={styles.disabledText}>
-                        {req.driver_id ? getDriverName(req.driver_id) : "Not available"}
+                        {formatStatus(req.status)}
                       </span>
-                    )}
-                  </td>
+                    </td>
 
-                  <td style={styles.td}>
-                    {req.status === "requested" && (
-                      <button
-                        style={styles.assignButton}
-                        onClick={() => handleAssign(req.id)}
-                      >
-                        Assign
-                      </button>
-                    )}
+                    <td style={styles.td}>
+                      {req.status === "requested" ? (
+                        <div style={styles.assignCell}>
+                          <div style={styles.driverSelectRow}>
+                            <select
+                              style={styles.select}
+                              value={selectedDrivers[req.id] || ""}
+                              onChange={(e) =>
+                                handleDriverChange(req.id, e.target.value)
+                              }
+                            >
+                              <option value="">Choose driver</option>
 
-                    {req.status === "in_progress" && (
-                      <button
-                        style={styles.monitorButton}
-                        onClick={() => handleMonitor(req)}
-                      >
-                        Monitor
-                      </button>
-                    )}
+                              {drivers.map((driver) => (
+                                <option key={driver.id} value={driver.id}>
+                                  {driver.full_name}
+                                </option>
+                              ))}
+                            </select>
 
-                    {req.status === "completed" && (
-                      <div style={styles.actionButtons}>
+                            <div style={styles.aiWrapper}>
+                              <button
+                                type="button"
+                                style={{
+                                  ...styles.aiButton,
+                                  ...(aiLoadingRequestId === req.id
+                                    ? styles.aiButtonLoading
+                                    : {})
+                                }}
+                                onClick={() => handleRecommendDriver(req.id)}
+                                disabled={aiLoadingRequestId === req.id}
+                              >
+                                {aiLoadingRequestId === req.id ? "…" : "🤖"}
+                              </button>
+
+                              <div style={styles.aiTooltip}>
+                                AI agent: click to recommend the best driver for this
+                                request using delivery history, food sensitivity, and
+                                distance risk.
+                              </div>
+                            </div>
+                          </div>
+
+                          {aiResult && (
+                            <div style={styles.aiRecommendationBox}>
+                              <div style={styles.aiRecommendationHeader}>
+                                <span style={styles.aiTitle}>AI Recommendation</span>
+
+                                <button
+                                  type="button"
+                                  style={styles.aiToggleButton}
+                                  onClick={() => toggleAiDetails(req.id)}
+                                >
+                                  {isAiOpen ? "Hide" : "Details"}
+                                </button>
+                              </div>
+
+                              <div style={styles.aiMainLine}>
+                                <strong>{aiResult.recommended_driver_name}</strong>
+                                <span
+                                  style={{
+                                    ...styles.riskBadge,
+                                    ...getRiskStyle(aiResult.predicted_risk)
+                                  }}
+                                >
+                                  {aiResult.predicted_risk} risk
+                                </span>
+                                <span style={styles.scoreBadge}>
+                                  score {aiResult.score}
+                                </span>
+                              </div>
+
+                              {isAiOpen && (
+                                <div style={styles.aiDetails}>
+                                  <p style={styles.aiDetailsTitle}>
+                                    Why this driver?
+                                  </p>
+
+                                  <ul style={styles.aiReasonsList}>
+                                    {(aiResult.reasons || []).map((reason, index) => (
+                                      <li key={index}>{reason}</li>
+                                    ))}
+                                  </ul>
+
+                                  {aiResult.drivers && aiResult.drivers.length > 1 && (
+                                    <>
+                                      <p style={styles.aiDetailsTitle}>
+                                        Other evaluated drivers
+                                      </p>
+
+                                      <div style={styles.aiDriverList}>
+                                        {aiResult.drivers.slice(0, 3).map((driver) => (
+                                          <div
+                                            key={driver.driver_id}
+                                            style={styles.aiDriverRow}
+                                          >
+                                            <span>{driver.driver_name}</span>
+                                            <span
+                                              style={{
+                                                ...styles.riskBadgeSmall,
+                                                ...getRiskStyle(driver.predicted_risk)
+                                              }}
+                                            >
+                                              {driver.predicted_risk}
+                                            </span>
+                                            <span style={styles.scoreSmall}>
+                                              {driver.score}
+                                            </span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span style={styles.disabledText}>
+                          {req.driver_id ? getDriverName(req.driver_id) : "Not available"}
+                        </span>
+                      )}
+                    </td>
+
+                    <td style={styles.td}>
+                      {req.status === "requested" && (
                         <button
-                          style={styles.reportButton}
-                          onClick={() => handleReport(req.delivery_id)}
+                          style={styles.assignButton}
+                          onClick={() => handleAssign(req.id)}
                         >
-                          Report
+                          Assign
                         </button>
+                      )}
 
+                      {req.status === "in_progress" && (
                         <button
-                          style={styles.clearButton}
-                          onClick={() => handleClear(req.id)}
+                          style={styles.monitorButton}
+                          onClick={() => handleMonitor(req)}
                         >
-                          Clear
+                          Monitor
                         </button>
-                      </div>
-                    )}
+                      )}
 
-                    {req.status === "assigned" && (
-                      <span style={styles.disabledText}>Waiting for driver</span>
-                    )}
-                  </td>
-                </tr>
-              ))
+                      {req.status === "completed" && (
+                        <div style={styles.actionButtons}>
+                          <button
+                            style={styles.reportButton}
+                            onClick={() => handleReport(req.delivery_id)}
+                          >
+                            Report
+                          </button>
+
+                          <button
+                            style={styles.clearButton}
+                            onClick={() => handleClear(req.id)}
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      )}
+
+                      {req.status === "assigned" && (
+                        <span style={styles.disabledText}>Waiting for driver</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
@@ -517,6 +672,22 @@ function getStatusStyle(status) {
   }
 
   return { background: "#eee", color: "#333" };
+}
+
+function getRiskStyle(risk) {
+  if (risk === "low") {
+    return { background: "#dcfce7", color: "#166534", border: "1px solid #bbf7d0" };
+  }
+
+  if (risk === "medium") {
+    return { background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a" };
+  }
+
+  if (risk === "high") {
+    return { background: "#fee2e2", color: "#991b1b", border: "1px solid #fecaca" };
+  }
+
+  return { background: "#e5e7eb", color: "#374151", border: "1px solid #d1d5db" };
 }
 
 const styles = {
@@ -685,9 +856,22 @@ const styles = {
   td: {
     padding: "14px 12px",
     borderBottom: "1px solid #f0f0f0",
-    verticalAlign: "middle",
+    verticalAlign: "top",
     fontSize: "14px",
     color: "#111827"
+  },
+
+  assignCell: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+    minWidth: "250px"
+  },
+
+  driverSelectRow: {
+    display: "flex",
+    gap: "8px",
+    alignItems: "center"
   },
 
   select: {
@@ -697,7 +881,162 @@ const styles = {
     border: "1px solid #d1d5db",
     background: "#ffffff",
     fontSize: "14px",
+    color: "#111827",
+    minWidth: "170px"
+  },
+
+  aiWrapper: {
+    position: "relative",
+    display: "inline-flex"
+  },
+
+  aiButton: {
+    width: "38px",
+    height: "38px",
+    borderRadius: "12px",
+    border: "1px solid #bae6fd",
+    background: "#e0f2fe",
+    color: "#075985",
+    cursor: "pointer",
+    fontSize: "18px",
+    fontWeight: "900",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+
+  aiButtonLoading: {
+    opacity: 0.7,
+    cursor: "wait"
+  },
+
+  aiTooltip: {
+    position: "absolute",
+    bottom: "46px",
+    right: 0,
+    width: "260px",
+    background: "#111827",
+    color: "#ffffff",
+    padding: "10px 12px",
+    borderRadius: "12px",
+    fontSize: "12px",
+    lineHeight: 1.4,
+    boxShadow: "0 10px 20px rgba(15, 23, 42, 0.25)",
+    opacity: 0,
+    visibility: "hidden",
+    transform: "translateY(4px)",
+    transition: "all 0.15s ease",
+    zIndex: 20,
+    pointerEvents: "none"
+  },
+
+  aiRecommendationBox: {
+    border: "1px solid #bfdbfe",
+    background: "#eff6ff",
+    borderRadius: "14px",
+    padding: "10px",
+    maxWidth: "420px"
+  },
+
+  aiRecommendationHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "8px",
+    marginBottom: "8px"
+  },
+
+  aiTitle: {
+    color: "#062B5F",
+    fontWeight: "900",
+    fontSize: "13px"
+  },
+
+  aiToggleButton: {
+    border: "none",
+    background: "#dbeafe",
+    color: "#1e40af",
+    borderRadius: "999px",
+    padding: "4px 9px",
+    fontWeight: "800",
+    fontSize: "12px",
+    cursor: "pointer"
+  },
+
+  aiMainLine: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: "8px",
     color: "#111827"
+  },
+
+  aiDetails: {
+    marginTop: "10px",
+    borderTop: "1px solid #bfdbfe",
+    paddingTop: "8px",
+    color: "#1f2937",
+    fontSize: "13px",
+    lineHeight: 1.45
+  },
+
+  aiDetailsTitle: {
+    margin: "6px 0",
+    fontWeight: "900",
+    color: "#062B5F"
+  },
+
+  aiReasonsList: {
+    margin: "6px 0 10px 18px",
+    padding: 0
+  },
+
+  aiDriverList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+    marginTop: "6px"
+  },
+
+  aiDriverRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "8px",
+    background: "#ffffff",
+    border: "1px solid #dbeafe",
+    borderRadius: "10px",
+    padding: "7px 8px"
+  },
+
+  riskBadge: {
+    padding: "4px 9px",
+    borderRadius: "999px",
+    fontSize: "12px",
+    fontWeight: "900"
+  },
+
+  riskBadgeSmall: {
+    padding: "3px 7px",
+    borderRadius: "999px",
+    fontSize: "11px",
+    fontWeight: "900"
+  },
+
+  scoreBadge: {
+    padding: "4px 9px",
+    borderRadius: "999px",
+    background: "#ffffff",
+    color: "#062B5F",
+    border: "1px solid #bfdbfe",
+    fontSize: "12px",
+    fontWeight: "900"
+  },
+
+  scoreSmall: {
+    color: "#062B5F",
+    fontWeight: "900",
+    fontSize: "12px"
   },
 
   assignButton: {

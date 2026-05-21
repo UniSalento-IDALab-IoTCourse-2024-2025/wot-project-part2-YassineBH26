@@ -37,3 +37,9 @@
   }
 }
 
+.admin-table-row div:hover > div[style*="visibility"] {
+  opacity: 1 !important;
+  visibility: visible !important;
+  transform: translateY(0) !important;
+}
+
