@@ -5,7 +5,8 @@ import {
   fetchActiveDelivery,
   fetchDriverDeliveries,
   startDelivery,
-  stopDelivery
+  stopDelivery,
+  sendPhoneLocation
 } from "../services/api";
 
 import StatusCard from "../components/dashboard/StatusCard";
@@ -37,10 +38,80 @@ function Driver() {
   const [activeDelivery, setActiveDelivery] = useState(null);
   const [driverDeliveries, setDriverDeliveries] = useState([]);
   const [actionMessage, setActionMessage] = useState("");
+  const [gpsMessage, setGpsMessage] = useState("");
+  const [gpsActive, setGpsActive] = useState(false);
   const [error, setError] = useState("");
   const [viewMode, setViewMode] = useState("assigned");
 
   const previousDataRef = useRef(null);
+  const gpsWatchIdRef = useRef(null);
+  const lastGpsSentAtRef = useRef(0);
+
+  const stopPhoneGpsTracking = useCallback(() => {
+    if (gpsWatchIdRef.current !== null && navigator.geolocation) {
+      navigator.geolocation.clearWatch(gpsWatchIdRef.current);
+      gpsWatchIdRef.current = null;
+    }
+
+    setGpsActive(false);
+  }, []);
+
+  const startPhoneGpsTracking = useCallback(() => {
+    if (!navigator.geolocation) {
+      setGpsMessage("Phone GPS is not supported by this browser.");
+      setGpsActive(false);
+      return;
+    }
+
+    if (gpsWatchIdRef.current !== null) {
+      return;
+    }
+
+    setGpsMessage("Requesting phone GPS permission...");
+
+    gpsWatchIdRef.current = navigator.geolocation.watchPosition(
+      async (position) => {
+        const now = Date.now();
+
+        if (now - lastGpsSentAtRef.current < 5000) {
+          return;
+        }
+
+        lastGpsSentAtRef.current = now;
+
+        const lat = position.coords.latitude;
+        const lon = position.coords.longitude;
+
+        try {
+          await sendPhoneLocation(lat, lon);
+          setGpsActive(true);
+          setGpsMessage(
+            `Phone GPS active: ${lat.toFixed(5)}, ${lon.toFixed(5)}`
+          );
+        } catch (gpsError) {
+          setGpsMessage(`GPS send error: ${gpsError.message}`);
+        }
+      },
+      (gpsError) => {
+        setGpsActive(false);
+
+        if (gpsError.code === 1) {
+          setGpsMessage("GPS permission denied on this phone.");
+        } else if (gpsError.code === 2) {
+          setGpsMessage("GPS position unavailable.");
+        } else if (gpsError.code === 3) {
+          setGpsMessage("GPS request timed out.");
+        } else {
+          setGpsMessage("GPS error while reading phone location.");
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 10000
+      }
+    );
+  }, []);
 
   const loadData = useCallback(async () => {
     try {
@@ -97,11 +168,22 @@ function Driver() {
     return () => clearInterval(interval);
   }, [loadData]);
 
+  useEffect(() => {
+    return () => {
+      stopPhoneGpsTracking();
+    };
+  }, [stopPhoneGpsTracking]);
+
   const handleStartDelivery = async (deliveryId) => {
     try {
       setActionMessage("");
+      setGpsMessage("");
+
       await startDelivery(deliveryId);
-      setActionMessage(`Delivery ${deliveryId} started.`);
+
+      startPhoneGpsTracking();
+
+      setActionMessage(`Delivery ${deliveryId} started. Phone GPS tracking started.`);
       setViewMode("live");
       await loadData();
     } catch (err) {
@@ -112,7 +194,12 @@ function Driver() {
   const handleStopDelivery = async (deliveryId) => {
     try {
       setActionMessage("");
+
+      stopPhoneGpsTracking();
+
       await stopDelivery(deliveryId);
+
+      setGpsMessage("Phone GPS tracking stopped.");
       setActionMessage(`Delivery ${deliveryId} completed.`);
       setViewMode("accomplished");
       await loadData();
@@ -182,6 +269,19 @@ function Driver() {
       </div>
 
       {actionMessage && <p style={styles.message}>{actionMessage}</p>}
+
+      {gpsMessage && (
+        <p
+          style={{
+            ...styles.message,
+            borderColor: gpsActive ? "#bbf7d0" : "#fde68a",
+            background: gpsActive ? "#f0fdf4" : "#fffbeb",
+            color: gpsActive ? "#166534" : "#92400e"
+          }}
+        >
+          {gpsMessage}
+        </p>
+      )}
 
       <div style={styles.statsGrid}>
         <SummaryCard label="Assigned" value={assignedDeliveries.length} />

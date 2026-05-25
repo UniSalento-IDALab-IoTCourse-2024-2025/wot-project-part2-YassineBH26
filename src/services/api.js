@@ -113,6 +113,10 @@ export async function stopMonitoring() {
   });
 }
 
+export async function sendPhoneLocation(lat, lon) {
+  return request(`/location?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`);
+}
+
 /* =========================
    ADMIN
 ========================= */
@@ -162,7 +166,6 @@ export async function geocodeAddress(address) {
   });
 }
 
-
 export async function recommendDriver(requestId) {
   return request("/recommend-driver", {
     method: "POST",
@@ -174,6 +177,7 @@ export async function recommendDriver(requestId) {
     }),
   });
 }
+
 /* =========================
    DRIVER
 ========================= */

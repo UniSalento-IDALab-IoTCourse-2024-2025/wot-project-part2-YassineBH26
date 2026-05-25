@@ -187,10 +187,10 @@ function AdminUsers() {
           <label style={styles.label}>Password</label>
           <input
             style={styles.input}
-            type="text"
+            type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Temporary password"
+            placeholder="password"
             required
           />
 
